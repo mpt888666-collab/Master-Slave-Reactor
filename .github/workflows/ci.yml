@@ -28,6 +28,9 @@ jobs:
       - name: Build
         run: cmake --build build --target Server -j 4
 
+      - name: Build bench client
+        run: g++ -O2 -std=c++20 bench/bench_client.cpp -o bench/bench_client
+
       - name: Smoke test
         run: |
           ./build/Server &

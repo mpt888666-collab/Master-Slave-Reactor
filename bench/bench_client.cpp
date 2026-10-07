@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
@@ -28,12 +29,27 @@ void closeConn(int& fd) {
     }
 }
 
+double nowUs() {
+    return std::chrono::duration<double, std::micro>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+
+std::size_t percentileIndex(std::size_t size, double p) {
+    if (size == 0) return 0;
+    std::size_t idx = static_cast<std::size_t>(p * static_cast<double>(size));
+    return idx >= size ? size - 1 : idx;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     if (argc < 5) {
         std::fprintf(stderr,
-                     "usage: %s <host> <port> <connections> <msgs_per_conn> [body_size]\n",
+                     "usage: %s <host> <port> <connections> <msgs_per_conn> [body_size] [window]\n"
+                     "  window: 每连接最多同时未回包的消息数，默认等于 msgs_per_conn（流水线到底）；\n"
+                     "          设为 1 即发一条等一条，可测得真实往返延迟；\n"
+                     "          只有显式给出 window 时才统计并输出延迟分位数\n",
                      argv[0]);
         return 1;
     }
@@ -43,6 +59,11 @@ int main(int argc, char** argv) {
     const int connCount = std::atoi(argv[3]);
     const int msgsPerConn = std::atoi(argv[4]);
     const int bodySize = argc >= 6 ? std::atoi(argv[5]) : 16;
+    const int windowArg = argc >= 7 ? std::atoi(argv[6]) : 0;
+    const std::size_t window = windowArg > 0 ? static_cast<std::size_t>(windowArg)
+                                             : static_cast<std::size_t>(msgsPerConn);
+    // 只有显式指定 window 时才逐条采样延迟：流水线场景不采样，避免给吞吐测试增加额外开销
+    const bool sampleLatency = windowArg > 0;
 
     if (port <= 0 || connCount <= 0 || msgsPerConn <= 0 || bodySize <= 0) {
         std::fprintf(stderr, "invalid arguments\n");
@@ -76,11 +97,21 @@ int main(int argc, char** argv) {
         bool done{false};
         std::size_t sendOff{0};
         int received{0};
+        std::size_t stamped{0};
         std::vector<uint8_t> sendBuf;
         std::vector<uint8_t> recvBuf;
+        std::vector<double> sendUs;
     };
 
     std::vector<Conn> conns(connCount);
+    const std::size_t packetSize = packet.size();
+    // 允许写出的字节上限 = 已回包数 + 窗口，取不到就说明窗口已满
+    const auto sendLimit = [packetSize, window](const Conn& c) {
+        const std::size_t allowed = (static_cast<std::size_t>(c.received) + window) * packetSize;
+        return allowed < c.sendBuf.size() ? allowed : c.sendBuf.size();
+    };
+    std::vector<double> latencies;
+    latencies.reserve(static_cast<std::size_t>(connCount) * static_cast<std::size_t>(msgsPerConn));
     int launched = 0;
     int finished = 0;
     int errors = 0;
@@ -113,6 +144,7 @@ int main(int argc, char** argv) {
         }
 
         c.sendBuf = sendTemplate;
+        c.sendUs.assign(static_cast<std::size_t>(msgsPerConn), 0.0);
 
         epoll_event ev{};
         ev.events = EPOLLOUT;
@@ -173,10 +205,17 @@ int main(int argc, char** argv) {
             }
 
             if (evs & EPOLLOUT) {
-                while (c.sendOff < c.sendBuf.size()) {
-                    ssize_t w = ::send(c.fd, c.sendBuf.data() + c.sendOff, c.sendBuf.size() - c.sendOff, MSG_NOSIGNAL);
+                while (c.sendOff < sendLimit(c)) {
+                    // 单次 send 也不能超过窗口上限，否则内核会把整段流水线一次收下，窗口形同虚设
+                    const std::size_t want = sendLimit(c) - c.sendOff;
+                    ssize_t w = ::send(c.fd, c.sendBuf.data() + c.sendOff, want, MSG_NOSIGNAL);
                     if (w > 0) {
                         c.sendOff += static_cast<std::size_t>(w);
+                        const std::size_t sentMsgs = c.sendOff / packetSize;
+                        const double stamp = nowUs();
+                        while (c.stamped < sentMsgs) {
+                            c.sendUs[c.stamped++] = stamp;
+                        }
                     } else if (w < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
                         break;
                     } else if (w < 0 && errno == EINTR) {
@@ -190,7 +229,8 @@ int main(int argc, char** argv) {
                 }
                 if (c.done) continue;
 
-                if (c.sendOff >= c.sendBuf.size()) {
+                if (c.sendOff >= sendLimit(c)) {
+                    // 全部发完，或流水线窗口已满：先只监听可读，等回包腾出窗口再续发
                     epoll_event mod{};
                     mod.events = EPOLLIN;
                     mod.data.u32 = idx;
@@ -227,6 +267,10 @@ int main(int argc, char** argv) {
                     const std::size_t total = 4 + body;
                     if (c.recvBuf.size() - off < total) break;
                     off += total;
+                    // 同一连接的请求与回包都是先入先出，第 received 条回包对应第 received 条请求
+                    if (sampleLatency) {
+                        latencies.push_back(nowUs() - c.sendUs[static_cast<std::size_t>(c.received)]);
+                    }
                     ++c.received;
                 }
                 if (off > 0) {
@@ -246,6 +290,14 @@ int main(int argc, char** argv) {
                     ++errors;
                     continue;
                 }
+
+                if (c.sendOff < sendLimit(c)) {
+                    // 回包腾出窗口空间，恢复发送
+                    epoll_event mod{};
+                    mod.events = EPOLLIN | EPOLLOUT;
+                    mod.data.u32 = idx;
+                    ::epoll_ctl(epfd, EPOLL_CTL_MOD, c.fd, &mod);
+                }
             }
         }
     }
@@ -255,8 +307,22 @@ int main(int argc, char** argv) {
     const long long totalMsgs = static_cast<long long>(finished) * msgsPerConn;
     const double qps = elapsedMs > 0 ? totalMsgs / (elapsedMs / 1000.0) : 0.0;
 
-    std::printf("connections=%d launched=%d finished=%d errors=%d msgs_per_conn=%d total_msgs=%lld elapsed_ms=%.0f qps=%.0f\n",
-                connCount, launched, finished, errors, msgsPerConn, totalMsgs, elapsedMs, qps);
+    std::sort(latencies.begin(), latencies.end());
+    double meanUs = 0.0;
+    for (double v : latencies) {
+        meanUs += v;
+    }
+    if (!latencies.empty()) {
+        meanUs /= static_cast<double>(latencies.size());
+    }
+    const double p50Us = latencies.empty() ? 0.0 : latencies[percentileIndex(latencies.size(), 0.50)];
+    const double p99Us = latencies.empty() ? 0.0 : latencies[percentileIndex(latencies.size(), 0.99)];
+    const double p999Us = latencies.empty() ? 0.0 : latencies[percentileIndex(latencies.size(), 0.999)];
+    const double maxUs = latencies.empty() ? 0.0 : latencies.back();
+
+    std::printf("connections=%d launched=%d finished=%d errors=%d msgs_per_conn=%d window=%zu total_msgs=%lld elapsed_ms=%.0f qps=%.0f sampled=%zu p50_us=%.0f p99_us=%.0f p999_us=%.0f max_us=%.0f mean_us=%.0f\n",
+                connCount, launched, finished, errors, msgsPerConn, window, totalMsgs, elapsedMs, qps,
+                latencies.size(), p50Us, p99Us, p999Us, maxUs, meanUs);
 
     for (auto& c : conns) closeConn(c.fd);
     ::close(epfd);

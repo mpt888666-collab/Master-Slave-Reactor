@@ -1,6 +1,6 @@
 # Master-Slave Reactor TCP Server
 
-基于 C++ 的主从 Reactor 高并发 TCP 服务器，使用 `epoll` ET 模式，支持多 acceptor、粘包/半包解析、异步回包和简单的 JSON 业务示例。
+基于 C++20 的主从 Reactor 高并发 TCP 服务器，使用 `epoll` ET 模式，支持多 acceptor、粘包/半包解析、异步回包和简单的 JSON 业务示例。
 
 ## 特性
 
@@ -176,16 +176,6 @@ g++ -O2 -std=c++20 bench/bench_client.cpp -o bench/bench_client
 - 每条消息仍有 JSON 序列化、`shared_ptr` 和 `RecvNode/SendNode` 分配开销，业务回调里的 `json::dump()` 是当前主要热点。
 - 结果基于同机 loopback，真实网络环境下会低于该数值。
 
-## 评估
-
-### 优点
-
-- 主从 Reactor 分层清晰：accept 与 IO 解耦，IO 与业务解耦。
-- `epoll` ET + `eventfd` 唤醒 + `runInLoop`，跨线程 epoll 操作安全。
-- 支持多 acceptor（`SO_REUSEPORT`）和多从 Reactor。
-- 粘包/半包解析、异步发送队列、回包链路完整。
-- 压测下 2000 连接、20 万消息无错误，中位数约 37 万 QPS（本机 loopback）。
-
 ### 不足
 
 - 分片按 `std::hash(session_uuid)` 取模，同一会话固定落在同一个 `LogicWork`，尚未按用户维度分片。
@@ -228,4 +218,5 @@ g++ -O2 -std=c++20 bench/bench_client.cpp -o bench/bench_client
 - [ ] 发送队列背压
 - [ ] 优雅退出完善
 - [ ] 对象池 / 内存池
+- [ ] 单元测试与 CI
 - [ ] 心跳与断线重连

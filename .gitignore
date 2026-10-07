@@ -1,0 +1,29 @@
+# build directories
+build/
+cmake-build-*/
+cmake-build-debug/
+cmake-build-release/
+cmake-build-debug-wsl/
+cmake-build-release-wsl/
+
+# compiled binaries
+bench/bench_client
+
+# editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# logs / crash dumps
+*.log
+core
+core.*
+
+# cmake
+CMakeCache.txt
+CMakeFiles/

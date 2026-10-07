@@ -156,38 +156,8 @@ g++ -O2 -std=c++20 bench/bench_client.cpp -o bench/bench_client
 
 - 本机 loopback 下，峰值约 **17 万 QPS**，稳定区间约 **12 万–16 万 QPS**。
 - Release 构建、关闭每消息日志后，性能比 Debug + 日志有明显提升。
-- 当前 `hex = 1` 固定，只使用了一个 `LogicWork` 业务线程；多业务线程未完全利用。
 - 每条消息仍有 JSON 序列化、`shared_ptr` 和 `RecvNode/SendNode` 分配开销。
 - 结果基于同机 loopback，真实网络环境下会低于该数值。
-
-## 评估
-
-### 优点
-
-- 主从 Reactor 分层清晰：accept 与 IO 解耦，IO 与业务解耦。
-- `epoll` ET + `eventfd` 唤醒 + `runInLoop`，跨线程 epoll 操作安全。
-- 支持多 acceptor（`SO_REUSEPORT`）和多从 Reactor。
-- 粘包/半包解析、异步发送队列、回包链路完整。
-- 压测下 2000 连接、20 万消息无错误。
-
-### 不足
-
-- `hex` 固定为 1，多 `LogicWork` 未真正并行。
-- 发送队列缺少长度上限和背压，客户端只收不发可能造成内存增长。
-- `CSession::handleRead()` 在关闭后仍会继续执行 `parseBuffer()`，应提前 `return`。
-- `CSession::handleWrite()` 对 `EPIPE/ECONNRESET` 等错误缺少关闭处理。
-- `LogicWork::DealMsg()` 持锁执行回调，回调中再次投递消息可能死锁。
-- `_recv_buffer.erase(0, n)` 为 O(n)，高吞吐下可优化为环形缓冲或偏移。
-- 连接关闭、优雅退出的时序仍可进一步收敛。
-
-### 后续优化
-
-1. 修复关闭/错误路径：`handleRead` 关闭后返回，`handleWrite` 错误关闭。
-2. 发送队列限流与背压。
-3. `hex` 改为按 `user_id` 分片，充分利用多个 `LogicWork`。
-4. 对象池复用 `RecvNode/SendNode`，减少 `new/shared_ptr` 开销。
-5. 缓冲区改为环形队列，去掉 `erase(0, n)`。
-6. 增加单元测试、CI 和更完整的性能测试脚本。
 
 ## 目录结构
 

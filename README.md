@@ -1,5 +1,7 @@
 # Master-Slave Reactor TCP Server
 
+![CI](https://github.com/mpt888666-collab/Master-Slave-Reactor/actions/workflows/ci.yml/badge.svg)
+
 基于 C++ 的主从 Reactor 高并发 TCP 服务器，使用 `epoll` ET 模式，支持多 acceptor、粘包/半包解析、异步回包和简单的 JSON 业务示例。
 
 ## 特性
@@ -108,6 +110,19 @@ cmake --build build -j 8
 
 默认监听 `127.0.0.1:8090`。
 
+## 持续集成
+
+`.github/workflows/ci.yml` 在每次 `push` 和 PR 时由 GitHub Actions 执行：安装依赖 → 分别以 Debug / Release 构建 → 启动服务端并运行 `bench/smoke_test.py`（单连接回包校验 + 20 连接 × 20 消息批量回包校验）。
+
+本地手动跑同样的流程：
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target Server -j 4
+./build/Server &
+python3 bench/smoke_test.py 127.0.0.1 8090
+```
+
 ## 压测
 
 ### 环境
@@ -197,8 +212,11 @@ g++ -O2 -std=c++20 bench/bench_client.cpp -o bench/bench_client
 
 ```text
 .
+├── .github/
+│   └── workflows/ci.yml
 ├── bench/
-│   └── bench_client.cpp
+│   ├── bench_client.cpp
+│   └── smoke_test.py
 ├── Channel.cpp / Channel.h
 ├── CServer.cpp / CServer.h
 ├── CSession.cpp / CSession.h
@@ -218,5 +236,6 @@ g++ -O2 -std=c++20 bench/bench_client.cpp -o bench/bench_client
 - [ ] 发送队列背压
 - [ ] 优雅退出完善
 - [ ] 对象池 / 内存池
-- [ ] 单元测试与 CI
+- [x] CI（Debug/Release 构建 + 冒烟测试）
+- [ ] 单元测试
 - [ ] 心跳与断线重连

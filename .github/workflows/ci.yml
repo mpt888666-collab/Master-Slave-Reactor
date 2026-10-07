@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-smoke:
+    name: Build (${{ matrix.build_type }}) & smoke test
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Debug, Release]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ uuid-dev nlohmann-json3-dev
+
+      - name: Configure (${{ matrix.build_type }})
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+
+      - name: Build
+        run: cmake --build build --target Server -j 4
+
+      - name: Smoke test
+        run: |
+          ./build/Server &
+          SRV=$!
+          trap 'kill $SRV 2>/dev/null || true' EXIT
+          python3 bench/smoke_test.py 127.0.0.1 8090

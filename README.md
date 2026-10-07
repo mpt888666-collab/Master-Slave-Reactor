@@ -184,5 +184,4 @@ g++ -O2 -std=c++20 bench/bench_client.cpp -o bench/bench_client
 - [ ] 发送队列背压
 - [ ] 优雅退出完善
 - [ ] 对象池 / 内存池
-- [ ] 单元测试与 CI
 - [ ] 心跳与断线重连

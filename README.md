@@ -206,7 +206,6 @@ g++ -O2 -std=c++20 bench/bench_client.cpp -o bench/bench_client
 3. 缓冲区改为环形队列，去掉 `erase(0, n)`。
 4. 心跳与空闲连接回收。
 5. 统一日志组件，替换散落的 `std::cout/std::cerr`。
-6. 增加单元测试、CI 和更完整的性能测试脚本。
 
 ## 目录结构
 
@@ -236,6 +235,5 @@ g++ -O2 -std=c++20 bench/bench_client.cpp -o bench/bench_client
 - [ ] 发送队列背压
 - [ ] 优雅退出完善
 - [ ] 对象池 / 内存池
-- [x] CI（Debug/Release 构建 + 冒烟测试）
 - [ ] 单元测试
 - [ ] 心跳与断线重连

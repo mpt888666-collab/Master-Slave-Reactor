@@ -159,6 +159,16 @@ g++ -O2 -std=c++20 bench/bench_client.cpp -o bench/bench_client
 - 每条消息仍有 JSON 序列化、`shared_ptr` 和 `RecvNode/SendNode` 分配开销。
 - 结果基于同机 loopback，真实网络环境下会低于该数值。
 
+### 不足
+
+- `hex` 固定为 1，多 `LogicWork` 未真正并行。
+- 发送队列缺少长度上限和背压，客户端只收不发可能造成内存增长。
+- `CSession::handleRead()` 在关闭后仍会继续执行 `parseBuffer()`，应提前 `return`。
+- `CSession::handleWrite()` 对 `EPIPE/ECONNRESET` 等错误缺少关闭处理。
+- `LogicWork::DealMsg()` 持锁执行回调，回调中再次投递消息可能死锁。
+- `_recv_buffer.erase(0, n)` 为 O(n)，高吞吐下可优化为环形缓冲或偏移。
+- 连接关闭、优雅退出的时序仍可进一步收敛。
+
 ## 目录结构
 
 ```text

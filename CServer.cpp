@@ -1,11 +1,8 @@
 #include "CServer.h"
 
-#include <uuid/uuid.h>
-
 #include "Channel.h"
 #include "const.h"
 #include "CSession.h"
-#include "EventLoop.h"
 #include "ThreadLoopPool.h"
 
 CServer::CServer(const int& port, const uint32_t& host)

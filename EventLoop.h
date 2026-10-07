@@ -2,6 +2,7 @@
 #define SERVER_EVENTLOOP_H
 
 #include <atomic>
+#include <mutex>
 #include <functional>
 #include <memory>
 #include <thread>
@@ -17,10 +18,6 @@ public:
 
     void loop();
     void wakeup() const;
-
-    [[nodiscard]] int GetFd() const {
-        return _ep_fd;
-    }
 
     void Stop();
 
@@ -43,7 +40,7 @@ private:
     int _wakeupFd{-1};
     std::shared_ptr<Channel> _wakeupChannel;
     std::vector<std::function<void()>> _pendingFunctions;
-    bool _looping{false};
+    std::atomic<bool> _looping{false};
     std::atomic<bool> _quit{false};
     std::vector<epoll_event> _events;
     std::mutex _mtx;

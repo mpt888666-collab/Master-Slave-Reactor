@@ -4,7 +4,6 @@
 
 #ifndef GETSERVER_SINGLETON_H
 #define GETSERVER_SINGLETON_H
-#include <iostream>
 #include <mutex>
 #include <memory>
 template<typename T>
@@ -25,12 +24,6 @@ public:
             _instance = std::shared_ptr<T>(new T);
         });
         return _instance;
-    }
-    void PrintAddress() {
-        std::cout << _instance.get() << std::endl;
-    }
-    ~Singleton() {
-        std::cout << "this is singleton destruct" << std::endl;
     }
 };
 

@@ -15,9 +15,7 @@
 CSession::CSession(int conn_fd, std::shared_ptr<Channel> channel,
                    std::shared_ptr<EventLoop> event_loop, std::weak_ptr<CServer> server)
     : _server(std::move(server)),
-      _user_id(-1),
       _conn_fd(conn_fd),
-      _b_head(false),
       _channel(std::move(channel)),
       _event_loop(std::move(event_loop)) {
     uuid_t uid;
@@ -27,7 +25,6 @@ CSession::CSession(int conn_fd, std::shared_ptr<Channel> channel,
     uuid_unparse(uid, str);
 
     _session_uuid = std::string(str);
-    _recv_head_node = std::make_shared<MsgNode>(HEAD_TOTAL_LEN);
 }
 
 CSession::~CSession() {
@@ -66,20 +63,8 @@ void CSession::Init() {
     }
 }
 
-int CSession::GetConnFd() const {
-    return _conn_fd;
-}
-
 std::string CSession::GetSessionId() const {
     return _session_uuid;
-}
-
-int CSession::GetUserId() const {
-    return _user_id;
-}
-
-void CSession::SetUserId(int id) {
-    _user_id = id;
 }
 
 void CSession::handleRead() {
@@ -93,13 +78,13 @@ void CSession::handleRead() {
         } else if (n == 0) {
             closeSession();
             return;
-        } else if (errno == EINTR) {
+        } else if (errno == EINTR){
             continue;
         } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
             break;
         } else {
             closeSession();
-            break;
+            return;
         }
     }
 
@@ -133,10 +118,9 @@ void CSession::parseBuffer() {
         recv_node->_data[body_len] = '\0';
         recv_node->_cur_len = body_len;
 
-        //目前就只走一个LogicSystem,以后根据客户端的唯一id来确认hex值
-        int hex = 1;
+        int hex = static_cast<int>(std::hash<std::string>{}(_session_uuid));
         LogicSystem::GetInstance()->PostMsgQueue(
-            std::make_shared<LogicNode>(_channel, recv_node, shared_from_this()), _user_id
+            std::make_shared<LogicNode>(recv_node, shared_from_this()), hex
         );
 
         _recv_buffer.erase(0, HEAD_TOTAL_LEN + body_len);
@@ -162,18 +146,6 @@ void CSession::closeSession() {
     }
 }
 
-void CSession::SetEventLoop(std::shared_ptr<EventLoop> eventLoop) {
-    _event_loop = std::move(eventLoop);
-}
-
-std::shared_ptr<EventLoop> CSession::GetLoop() {
-    return _event_loop;
-}
-
-std::shared_ptr<Channel> CSession::GetChannel() {
-    return _channel;
-}
-
 void CSession::handleWrite() {
     while (true) {
         std::shared_ptr<MsgNode> msg_node;
@@ -196,38 +168,47 @@ void CSession::handleWrite() {
                 std::lock_guard<std::mutex> lock(_send_mutex);
                 _send_queue.pop();
             }
+        }else if (n < 0 && errno == EINTR) {
             continue;
-        }
-
-        if (n < 0 && errno == EINTR) {
-            continue;
-        }
-
-        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+        }else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
             return;
-        }
-        if (n < 0 && (errno == EPIPE || errno == ECONNRESET)) {
+        }else if (n < 0 && (errno == EPIPE || errno == ECONNRESET)) {
+            closeSession();
+            return;
+        }else {
+            closeSession();
             return;
         }
     }
 }
 
-void CSession::Send(MSG_IDS id, std::string msg) {
+bool CSession::Send(MSG_IDS id, std::string msg) {
     std::lock_guard<std::mutex> lock(_send_mutex);
-    if (_b_close) return;
 
-    int size = msg.size();
-    if (size > MAX_SEND_QUEUE_SIZE) {
-        return;
+    if (_b_close.load()) {
+        return false;
+    }
+
+    if (msg.size() > MAX_LENGTH) {
+        return false;
+    }
+
+    if (_send_queue.size() >= MAX_SEND_QUEUE_SIZE) {
+        return false;
     }
 
     _send_queue.push(std::make_shared<SendNode>(msg.c_str(), msg.size(), id));
     _channel->EnableWriting();
     _event_loop->UpdateChannel(_channel.get());
-
+    return true;
 }
 
-void CSession::Shutdown() {
+
+void CSession::Close() {
+    if (_b_close.exchange(true)) {
+        return;
+    }
+
     if (_event_loop) {
         _event_loop->runInLoop([self = shared_from_this()] {
             self->closeSession();
@@ -237,6 +218,10 @@ void CSession::Shutdown() {
     }
 }
 
-LogicNode::LogicNode(std::shared_ptr<Channel> channel, std::shared_ptr<RecvNode> recv_node, std::shared_ptr<CSession> session) :
-        _channel(std::move(channel)), _recv_node(std::move(recv_node)), _session(std::move(session)){}
+void CSession::Shutdown() {
+    Close();
+}
+
+LogicNode::LogicNode(std::shared_ptr<RecvNode> recv_node, std::shared_ptr<CSession> session) :
+        _recv_node(std::move(recv_node)), _session(std::move(session)){}
 

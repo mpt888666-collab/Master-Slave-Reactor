@@ -2,7 +2,6 @@
 
 #include <cerrno>
 #include <cstdint>
-#include <cstring>
 #include <stdexcept>
 #include <unistd.h>
 #include <sys/eventfd.h>
@@ -113,7 +112,7 @@ void EventLoop::UpdateChannel(Channel* ch) {
 }
 
 void EventLoop::runInLoop(std::function<void()> cb) {
-    if (isInLoopThread()) {
+    if (isInLoopThread() || !_looping || _quit) {
         cb();
     }else {
         queueInLoop(std::move(cb));

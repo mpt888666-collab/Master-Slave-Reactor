@@ -1,10 +1,5 @@
 #include "const.h"
-#include "CServer.h"
-#include <arpa/inet.h>
-
 #include "MainReactor.h"
-#include <chrono>
-#include <thread>
 
 #include "LogicSystem.h"
 #include "ThreadLoopPool.h"
@@ -35,9 +30,8 @@ int main() {
         MainReactor reactor(2);
         reactor.Run();
     }
-
-    LogicSystem::GetInstance()->Shutdown();
     ThreadLoopPool::GetInstance()->Shutdown();
+    LogicSystem::GetInstance()->Shutdown();
     std::cout << "All threads finished" << std::endl;
     return 0;
 }

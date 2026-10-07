@@ -1,12 +1,14 @@
 #ifndef SERVER_LOGICSYSTEM_H
 #define SERVER_LOGICSYSTEM_H
 
+#include <atomic>
 #include <condition_variable>
 #include <functional>
 #include <map>
 #include <mutex>
 #include <queue>
 #include <thread>
+#include <vector>
 
 #include "Singleton.h"
 
@@ -26,7 +28,7 @@ private:
     std::mutex _mtx;
     std::condition_variable _consume;
     std::thread _work_thread;
-    bool _b_stop = false;
+    std::atomic<bool> _b_stop = false;
     std::map<uint16_t, std::function<void(std::shared_ptr<CSession> session, uint16_t msg_id, const std::string& msg_data)>> _fun_callbacks;
 };
 class LogicSystem : public Singleton<LogicSystem> {
@@ -40,8 +42,7 @@ public:
 private:
     std::vector<std::shared_ptr<LogicWork>> _workerThreads;
 
-
-    std::map<uint16_t, std::function<void(std::shared_ptr<CSession> session, uint16_t msg_id, const std::string& msg_data)>> _fun_callbacks;
+    std::atomic<bool> _b_stop = false;
 };
 
 #endif //SERVER_LOGICSYSTEM_H

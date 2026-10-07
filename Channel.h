@@ -5,8 +5,6 @@
 #include <functional>
 #include <sys/epoll.h>
 
-using handleRead = std::function<void()>;
-
 class Channel {
 public:
     explicit Channel(int fd);

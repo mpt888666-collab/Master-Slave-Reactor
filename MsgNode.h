@@ -4,12 +4,9 @@
 
 #ifndef CHATSERVER_MSGNODE_H
 #define CHATSERVER_MSGNODE_H
-#include <iostream>
 #include "const.h"
 #include <cstring>
-class LogicSystem;
 class MsgNode {
-    friend class LogicSystem;
 public:
 
     MsgNode(const MsgNode&) = delete;
@@ -23,10 +20,6 @@ public:
         delete[] _data;
     }
 
-    void Clear() {
-        memset(_data, '\0', _total_len);
-        _cur_len = 0;
-    }
 
     uint16_t _cur_len;
     uint16_t _total_len;
@@ -34,7 +27,6 @@ public:
 };
 
 class RecvNode : public MsgNode {
-    friend class LogicSystem;
     friend class LogicWork;
 public:
     RecvNode(uint16_t max_len, uint16_t msg_id);
@@ -44,7 +36,6 @@ private:
 };
 
 class SendNode : public MsgNode {
-    friend class LogicSystem;
     friend class LogicWork;
 public:
     SendNode(const char * msg, uint16_t max_len, uint16_t msg_id);

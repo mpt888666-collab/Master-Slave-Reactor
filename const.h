@@ -5,16 +5,11 @@
 #ifndef SERVER_CONST_H
 #define SERVER_CONST_H
 
-#include <cstdio>
 #include <unistd.h>
-#include <sys/wait.h>
 #include <csignal>
-#include <cstdlib>
 #include <iostream>
-#include <ostream>
 #include <sys/epoll.h>
 #include <sys/socket.h>
-#include <netdb.h>
 #include <sys/fcntl.h>
 #include <cerrno>
 #include <netinet/in.h>
@@ -28,7 +23,6 @@ inline void set_nonblock(int fd) {
     int flag = fcntl(fd, F_GETFL);
     fcntl(fd, F_SETFL, flag | O_NONBLOCK);
 }
-
 enum MSG_IDS {
     MSG_TEST_ID = 0, //测试消息
     MSG_TEST_ID_RSP = 1, //测试回包

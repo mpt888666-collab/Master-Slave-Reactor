@@ -1,6 +1,6 @@
 # Master-Slave Reactor TCP Server
 
-基于 C++20 的主从 Reactor 高并发 TCP 服务器，使用 `epoll` ET 模式，支持多 acceptor、粘包/半包解析、异步回包和简单的 JSON 业务示例。
+基于 C++ 的主从 Reactor 高并发 TCP 服务器，使用 `epoll` ET 模式，支持多 acceptor、粘包/半包解析、异步回包和简单的 JSON 业务示例。
 
 ## 特性
 
